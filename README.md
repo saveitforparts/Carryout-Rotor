@@ -1,8 +1,8 @@
-#Light Duty Two-Axis Az/El rotor using portable "Carryout" satellite antenna. 
+#Light-duty two-axis Az/El rotor using portable "Carryout" satellite antenna. 
 
 Gabe Emerson / Saveitforparts 2024. Email: gabe@saveitforparts.com
 
-Video demo: 
+Video demo: (in progress)
 
 **Introduction:**
 
@@ -10,7 +10,7 @@ This code controls a portable satellite antenna over RS-485 using serial command
 This is based roughly on my Carryout-Radio-Telescope project, adapted as a satellite
 tracking rotor. 
 
-The carryout_rotor.py program acts as an interface between The Winegard Carryout and
+The carryout_rotor.py program acts as an interface between a Winegard Carryout and
 Gpredict (or possibly other hamlib / rotctld compatible programs). Commands to get
 and set position are converted to Winegard firmware commands. Currently only "p", 
 "P <X Y>", and "S" are implemented. 
@@ -107,11 +107,15 @@ should return a menu of available commands and submenus. Typing "q" exits the cu
 submenu and returns to the root menu.
 
 Some submenus of interest include:
-target: send dish to desired azimuth / elevation coordinates
+target: send antenna to desired azimuth / elevation coordinates
 motor: manual motor movements and settings
 dvb: Get signal info from the stock LNB (if installed)
 os: List and quit running processes, etc
 
+You will probably want to increase the maximum elevation setting for use as a rotor.
+This can be found in the nvs submenu, index 102. Once in nvs, enter "e 102" to verify
+this is the max elevation setting. Then enter "e 102 90" to set the new max, and
+finally enter "s" to save. 
 	
 Note that the console does not accept backspace, so if you make a mistake while typing,
 just hit enter to clear the console. If necessary, close the console or unplug the 
@@ -122,10 +126,10 @@ dish to avoid a motor overrun.
 
 The Carryout antenna uses a 360-degree clockwise coordinate system, with the coax
 / F connector at approximately 135 degrees. You may have to run some serial console
-commands like "target", "g 0 22" to find the 0 or North position. I marked my dish
+commands like "target", "g 0 22" to find the 0 or North position. I marked mine
 with sharpie once I determined this. 
 		
-Generally I place the dish with the "0" position facing due North.
+Generally I place the antenna with the "0" position facing due North.
 
 
 **Using as an Az/El rotor:**
@@ -141,7 +145,8 @@ port 4533 (the default for Gpredict).
 In Gpredict's rotor settings, you will want to create a new rotor at 127.0.0.1:4533,
 0->180->360, with minimum elevation 22 and maximum elevation 90 (the Carryout can't
 physically drop below about 22 degrees elevation, other models may have different
-limitations). 
+limitations). See the note in the "Setting Up / Testing" section about increasing
+the Carryout's default max elevation. 
 
 Use Gpredict as normal to track a satellite and click "Engage" to connect to
 carryout_rotor.py. Clicking "engage" a second time to disengage will close the socket,
