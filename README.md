@@ -67,6 +67,10 @@ other than Ku band. I removed the reflector and LNB and replaced them with a 3D-
 printed helicone antenna for L-band (https://www.thingiverse.com/thing:6436342).
 The helicone is connected to a Nooelec SAWbird+GOES LNA, powered via RTL-SDR 
 bias-tee. 
+
+The motors *might* be powerful enough to hold a small Yagi or other directional
+antenna, but I have not tested this. Adding too much weight or moving the center
+of balance too far from the mounting plate might damage the motors or gearing. 
  
 
 **Notes on power supply and auto-scan behavior**
