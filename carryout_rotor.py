@@ -35,9 +35,9 @@ client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 client_socket.bind((listen_ip, listen_port))
 client_socket.listen(1)
 
-print("Listening for rotor commands on", listen_ip, ":", listen_port)
+print(f"Listening for rotor commands on {listen_ip} : {listen_port}")
 conn, addr = client_socket.accept()
-print("Connection from ", addr)
+print(f"Connection from {addr}")
 
 
 # Would be nice to get initial / resting position from Carryout firmware
@@ -52,20 +52,20 @@ while 1:
 
     cmd = data.decode("utf-8").strip().split(" ")  # grab the incoming command
 
-    # print("Received: ",cmd)    #debugging, what did Gpredict send?
+    # print(f"Received: {cmd}")  #debugging, what did Gpredict send?
 
     if cmd[0] == "p":  # Gpredict is requesting current position
-        response = "{}\n{}\n".format(current_az, current_el)
+        response = f"{current_az}\n{current_el}\n"
         conn.send(response.encode("utf-8"))
 
     elif cmd[0] == "P":  # Gpredict is sending desired position
         target_az = float(cmd[1])
         target_el = float(cmd[2])
-        print(" Move antenna to:", target_az, " ", target_el, end="\r")
+        print(f"Move antenna to: {target_az} {target_el}", end="\r")
 
         # tell Carryout to move to target position
         carryout.write(b"target\r")
-        command = ("g " + str(target_az) + " " + str(target_el) + "\r").encode("ascii")
+        command = (f"g {target_az} {target_el}\r").encode("ascii")
         carryout.write(command)
 
         # read live position updates from Carryout
