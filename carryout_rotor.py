@@ -24,10 +24,8 @@ carryout = serial.Serial(
 
 print("Carryout antenna connected on ", carryout.port)
 
-carryout.write(
-    bytes(b"q\r")
-)  # go back to root menu in case firmware was left in a submenu
-carryout.write(bytes(b"\r"))  # clear firmware prompt to avoid unknown command errors
+carryout.write(b"q\r")  # go back to root menu in case firmware was left in a submenu
+carryout.write(b"\r")  # clear firmware prompt to avoid unknown command errors
 
 
 # listen to local port for rotctld commands
@@ -66,7 +64,7 @@ while 1:
         print(" Move antenna to:", target_az, " ", target_el, end="\r")
 
         # tell Carryout to move to target position
-        carryout.write(bytes(b"target\r"))
+        carryout.write(b"target\r")
         command = ("g " + str(target_az) + " " + str(target_el) + "\r").encode("ascii")
         carryout.write(command)
 
@@ -94,7 +92,7 @@ while 1:
         response = "RPRT 0\n "  # Everything's under control, situation normal
         conn.send(response.encode("utf-8"))
 
-        carryout.write(bytes(b"q\r"))  # go back to Carryout's root menu
+        carryout.write(b"q\r")  # go back to Carryout's root menu
 
     elif cmd[0] == "S":  # Gpredict says to stop
         print(
