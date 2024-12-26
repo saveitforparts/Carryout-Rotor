@@ -3,6 +3,7 @@
 # Gabe Emerson / Saveitforparts 2024, Email: gabe@saveitforparts.com
 
 import socket
+import sys
 
 import regex as re
 import serial
@@ -95,14 +96,12 @@ while 1:
         carryout.write(b"q\r")  # go back to Carryout's root menu
 
     elif cmd[0] == "S":  # Gpredict says to stop
-        print(
-            "Gpredict disconnected, exiting"
-        )  # Do we want to do something else with this?
+        print("Gpredict disconnected, exiting")  # Do we want to do something else with this?
         conn.close()
         carryout.close()
-        exit()
+        sys.exit()
     else:
         print("Exiting")
         conn.close()
         carryout.close()
-        exit()
+        sys.exit()
