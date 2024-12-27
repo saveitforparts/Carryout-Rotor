@@ -2,11 +2,60 @@
 # Version 1.0
 # Gabe Emerson / Saveitforparts 2024, Email: gabe@saveitforparts.com
 
+import argparse
 import socket
 import sys
 
 import regex as re
 import serial
+
+
+def parse_arguments():
+    """Parse command-line arguments for configuring the Winegard Carryout controller.
+
+    This function defines and parses the command-line arguments required to configure
+    the serial communication and TCP/IP settings for interfacing with the Winegard Carryout
+    antenna and Gpredict.
+
+    Returns:
+        argparse.Namespace: Parsed command-line arguments containing:
+            - port (str): Serial port to communicate with the Winegard Carryout.
+            - baudrate (int): Baudrate for the serial communication.
+            - listen_ip (str): IP address to listen for Gpredict commands.
+            - listen_port (int): Port to listen for Gpredict commands.
+    """
+    parser = argparse.ArgumentParser(
+        description="Control Winegard Carryout as an AZ/EL Rotor from Gpredict.",
+    )
+    parser.add_argument(
+        "--port",
+        type=str,
+        default="/dev/ttyUSB0",
+        help="Serial port to communicate with the Winegard Carryout.",
+    )
+    parser.add_argument(
+        "--baudrate",
+        type=int,
+        default=57600,
+        help="Baudrate for the serial communication.",
+    )
+    parser.add_argument(
+        "--listen_ip",
+        type=str,
+        default="127.0.0.1",
+        help="IP address to listen for Gpredict commands.",
+    )
+    parser.add_argument(
+        "--listen_port",
+        type=int,
+        default=4533,
+        help="Port to listen for Gpredict commands.",
+    )
+    return parser.parse_args()
+
+
+# Parse command-line arguments
+args = parse_arguments()
 
 # initialize some variables
 current_az = 0.0
@@ -15,8 +64,8 @@ index = 0
 
 # define "carryout" as the serial port device to interface with
 carryout = serial.Serial(
-    port="/dev/ttyUSB0",  # pass this from command line in future?
-    baudrate=57600,
+    port=args.port,
+    baudrate=args.baudrate,
     parity=serial.PARITY_NONE,
     stopbits=serial.STOPBITS_ONE,
     bytesize=serial.EIGHTBITS,
@@ -30,8 +79,8 @@ carryout.write(b"\r")  # clear firmware prompt to avoid unknown command errors
 
 
 # listen to local port for rotctld commands
-listen_ip = "127.0.0.1"  # listen on localhost
-listen_port = 4533  # pass this from command line in future?
+listen_ip = args.listen_ip  # Use the IP address provided via command-line arguments
+listen_port = args.listen_port  # Use the port provided via command-line arguments
 client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 client_socket.bind((listen_ip, listen_port))
 client_socket.listen(1)
@@ -73,7 +122,8 @@ while 1:
         reply = carryout.read(100).decode().strip()  # read dish response
         header, *readings = reply.split(" ")  # Split into list
         [re.sub("[^a-z0-9]+", "", _) for _ in readings]  # clean out garbage chars
-        # print('Carryout replied:', readings)     #debugging
+
+        # print(f"Carryout replied: {readings}")  # debugging
 
         # massage messy output into az/el
         while index < len(readings):
