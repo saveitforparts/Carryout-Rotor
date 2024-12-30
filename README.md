@@ -1,3 +1,11 @@
+I used AI to clean up the code and enhanced it, I dont have any of this hardware so I can not do any actual testing. Please let me know if this code works
+
+
+
+
+
+
+
 #Light-duty two-axis Az/El rotor using portable "Carryout" satellite antenna. 
 
 Gabe Emerson / Saveitforparts 2024. Email: gabe@saveitforparts.com
