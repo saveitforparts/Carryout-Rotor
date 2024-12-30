@@ -79,4 +79,17 @@ Better exception handling
 Status tracking and telemetry
 To use this, you'll need to install the required packages:
 
-pip install fastapi uvicorn pyyaml pyserial
+you need to have these installed-
+
+pip install fastapi
+pip install uvicorn
+pip install pyyaml
+pip install pyserial
+pip install regex
+pip install typing
+
+
+or as one install-
+
+
+pip install fastapi uvicorn pyyaml pyserial regex typing
