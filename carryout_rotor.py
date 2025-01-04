@@ -1,131 +1,226 @@
+import asyncio
+import logging
+import yaml
+import time
+import math
 import serial
-import socket 
-import regex as re
-from typing import Tuple
+import socket
 from dataclasses import dataclass
-import argparse
+from pathlib import Path
+from typing import Dict, Optional, Tuple
+from fastapi import FastAPI, HTTPException
+from aiohttp import web
+import jinja2
+
+# Configuration Constants
+DEFAULT_CONFIG = {
+    "antenna": {
+        "port": "/dev/ttyUSB0",
+        "baudrate": 57600,
+        "soft_limits": {
+            "azimuth_min": 0,
+            "azimuth_max": 360,
+            "elevation_min": 0,
+            "elevation_max": 90
+        }
+    },
+    "network": {
+        "host": "127.0.0.1",
+        "gpredict_port": 4533,
+        "web_port": 8080,
+        "api_port": 8081
+    },
+    "safety": {
+        "max_wind_speed": 30,
+        "max_motor_temp": 70,
+        "min_voltage": 11.0
+    }
+}
 
 @dataclass
-class AntennaPosition:
-    """Stores the current position of the antenna"""
-    azimuth: float = 0.0    # Horizontal rotation angle
-    elevation: float = 0.0   # Vertical angle
+class Position:
+    azimuth: float
+    elevation: float
+    timestamp: float = time.time()
 
-class CarryoutController:
-    """Controls the Winegard Carryout antenna hardware"""
-    
-    def __init__(self, port: str = '/dev/ttyUSB0', baudrate: int = 57600):
-        """Sets up the serial connection to the antenna
-        port: USB port where antenna is connected
-        baudrate: Communication speed with antenna"""
-        self.position = AntennaPosition()
+@dataclass
+class SafetyStatus:
+    wind_speed: float = 0.0
+    motor_temps: dict = None
+    voltage: float = 12.0
+    is_safe: bool = True
+    last_check: float = time.time()
+
+class AntennaController:
+    def __init__(self, config: dict):
+        self.config = config
+        self.current_position = Position(0, 0)
+        self.target_position = None
+        self.is_calibrated = False
+        self.motor_temps = {'az': 0, 'el': 0}
         self.serial = serial.Serial(
-            port=port,
-            baudrate=baudrate,
-            parity=serial.PARITY_NONE,
-            stopbits=serial.STOPBITS_ONE,
-            bytesize=serial.EIGHTBITS,
-            timeout=1
+            port=config['antenna']['port'],
+            baudrate=config['antenna']['baudrate']
         )
-        self._initialize_connection()
-    
-    def _initialize_connection(self):
-        """Resets antenna to root menu state for clean communication"""
-        self.serial.write(bytes(b'q\r'))
-        self.serial.write(bytes(b'\r'))
+
+    async def initialize(self):
+        await self.perform_self_test()
+        await self.calibrate()
         
-    def move_to_position(self, target_az: float, target_el: float) -> bool:
-        """Commands antenna to move to specified position
-        target_az: Target azimuth angle
-        target_el: Target elevation angle
-        Returns: True if position update successful"""
-        self.serial.write(bytes(b'target\r'))
-        command = f'g {target_az} {target_el}\r'.encode('ascii')
-        self.serial.write(command)
-        return self._update_current_position()
-    
-    def _update_current_position(self) -> bool:
-        """Reads and parses current position from antenna
-        Returns: True if position successfully parsed"""
-        reply = self.serial.read(100).decode().strip()
-        readings = reply.split(" ")
-        readings = [re.sub('[^a-z0-9]+', '', r) for r in readings]
-        
-        try:
-            el_index = readings.index("el")
-            if el_index >= 3:
-                self.position.azimuth = int(readings[el_index-3])/100
-                self.position.elevation = int(readings[el_index+2][:4])/100
-                return True
-        except (ValueError, IndexError):
+    async def perform_self_test(self):
+        self.serial.write(b'test\r')
+        response = self.serial.readline()
+        return response.decode().strip() == 'OK'
+
+    async def move_to(self, azimuth: float, elevation: float) -> bool:
+        if not self._validate_coordinates(azimuth, elevation):
             return False
+        
+        command = f'target\rg {azimuth} {elevation}\r'
+        self.serial.write(command.encode())
+        return await self._update_position()
+
+    async def _update_position(self) -> bool:
+        response = self.serial.readline()
+        if response:
+            return True
         return False
 
-class GpredictInterface:
-    """Handles network communication with Gpredict software"""
-    
-    def __init__(self, ip: str = '127.0.0.1', port: int = 4533):
-        """Sets up network socket for Gpredict communication
-        ip: IP address to listen on
-        port: Port number for Gpredict connection"""
-        self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.socket.bind((ip, port))
-        self.socket.listen(1)
-        print(f'Listening for rotor commands on {ip}:{port}')
+    def _validate_coordinates(self, az: float, el: float) -> bool:
+        limits = self.config['antenna']['soft_limits']
+        return (limits['azimuth_min'] <= az <= limits['azimuth_max'] and
+                limits['elevation_min'] <= el <= limits['elevation_max'])
+
+class SafetyMonitor:
+    def __init__(self, config: dict):
+        self.config = config
+        self.status = SafetyStatus()
         
-    def accept_connection(self) -> Tuple[socket.socket, tuple]:
-        """Waits for and accepts connection from Gpredict
-        Returns: Connection socket and address tuple"""
-        return self.socket.accept()
-
-def main():
-    """Main program loop that:
-    1. Sets up command line arguments
-    2. Initializes antenna and network connections
-    3. Processes commands from Gpredict
-    4. Handles cleanup on exit"""
-    
-    parser = argparse.ArgumentParser(description='Winegard Carryout Controller')
-    parser.add_argument('--port', default='/dev/ttyUSB0', help='Serial port for antenna')
-    parser.add_argument('--listen-port', type=int, default=4533, help='Port to listen for Gpredict')
-    args = parser.parse_args()
-
-    controller = CarryoutController(port=args.port)
-    interface = GpredictInterface(port=args.listen_port)
-    
-    conn, addr = interface.accept_connection()
-    print(f'Connection from {addr}')
-
-    try:
+    async def start_monitoring(self):
         while True:
-            data = conn.recv(100)
-            if not data:
+            await self._check_all_parameters()
+            await asyncio.sleep(1)
+            
+    async def _check_all_parameters(self):
+        self.status.wind_speed = await self._read_wind_speed()
+        self.status.motor_temps = await self._read_motor_temps()
+        self.status.voltage = await self._read_voltage()
+        self.status.is_safe = self._evaluate_safety()
+        
+    def _evaluate_safety(self) -> bool:
+        return (self.status.wind_speed < self.config['safety']['max_wind_speed'] and
+                max(self.status.motor_temps.values()) < self.config['safety']['max_motor_temp'] and
+                self.status.voltage > self.config['safety']['min_voltage'])
+
+    async def _read_wind_speed(self):
+        # Implement your wind speed sensor reading here
+        return 0.0
+
+    async def _read_motor_temps(self):
+        # Implement your temperature sensor reading here
+        return {'az': 25.0, 'el': 25.0}
+
+    async def _read_voltage(self):
+        # Implement your voltage reading here
+        return 12.0
+
+class NetworkManager:
+    def __init__(self, config: dict, antenna_controller):
+        self.config = config
+        self.antenna = antenna_controller
+        self.clients = {}
+        
+    async def start(self):
+        await asyncio.gather(
+            self._start_gpredict_server(),
+            self._start_web_server(),
+            self._start_api_server()
+        )
+        
+    async def _start_gpredict_server(self):
+        server = await asyncio.start_server(
+            self._handle_gpredict,
+            self.config['network']['host'],
+            self.config['network']['gpredict_port']
+        )
+        async with server:
+            await server.serve_forever()
+            
+    async def _handle_gpredict(self, reader, writer):
+        while True:
+            try:
+                data = await reader.readline()
+                if not data:
+                    break
+                    
+                command = data.decode().strip()
+                if command.startswith('P'):
+                    _, az, el = command.split()
+                    await self.antenna.move_to(float(az), float(el))
+                    writer.write(b'RPRT 0\n')
+                elif command == 'p':
+                    pos = self.antenna.current_position
+                    response = f'{pos.azimuth}\n{pos.elevation}\n'
+                    writer.write(response.encode())
+                
+                await writer.drain()
+            except Exception as e:
+                logging.error(f"Gpredict handler error: {e}")
                 break
 
-            cmd = data.decode("utf-8").strip().split(" ")
+    async def _start_web_server(self):
+        app = web.Application()
+        app.router.add_get('/', self._handle_web_index)
+        runner = web.AppRunner(app)
+        await runner.setup()
+        site = web.TCPSite(runner, self.config['network']['host'], 
+                          self.config['network']['web_port'])
+        await site.start()
+
+    async def _start_api_server(self):
+        app = FastAPI()
+        # Add API endpoints here
+        pass
+
+class SatelliteControlSystem:
+    def __init__(self):
+        self.config = DEFAULT_CONFIG
+        self.setup_logging()
+        self.antenna = AntennaController(self.config)
+        self.safety = SafetyMonitor(self.config)
+        self.network = NetworkManager(self.config, self.antenna)
+        
+    def setup_logging(self):
+        logging.basicConfig(
+            level=logging.INFO,
+            format='%(asctime)s - %(levelname)s - %(message)s'
+        )
+        
+    async def start(self):
+        try:
+            await self.antenna.initialize()
+            await asyncio.gather(
+                self.safety.start_monitoring(),
+                self.network.start()
+            )
+            logging.info("System started successfully")
+        except Exception as e:
+            logging.error(f"Startup failed: {e}")
+            await self.shutdown()
             
-            if cmd[0] == "p":  # Position request
-                response = f"{controller.position.azimuth}\n{controller.position.elevation}\n"
-                conn.send(response.encode('utf-8'))
-                
-            elif cmd[0] == "P":  # Move command
-                target_az = float(cmd[1])
-                target_el = float(cmd[2])
-                print(f' Move antenna to: {target_az} {target_el}', end="\r")
-                
-                if controller.move_to_position(target_az, target_el):
-                    conn.send("RPRT 0\n".encode('utf-8'))
-                else:
-                    conn.send("RPRT 1\n".encode('utf-8'))
-                    
-            elif cmd[0] == "S":  # Stop command
-                raise KeyboardInterrupt
-                
-    except (KeyboardInterrupt, Exception) as e:
-        print('\nShutting down...')
-    finally:
-        conn.close()
-        controller.serial.close()
+    async def shutdown(self):
+        # Implement cleanup here
+        pass
+
+async def main():
+    system = SatelliteControlSystem()
+    await system.start()
+    
+    try:
+        while True:
+            await asyncio.sleep(1)
+    except KeyboardInterrupt:
+        await system.shutdown()
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
