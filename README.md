@@ -2,7 +2,7 @@
 
 Gabe Emerson / Saveitforparts 2024. Email: gabe@saveitforparts.com
 
-Video demo: [(in progress)](https://youtu.be/GRLNETxWUR8)
+Video demo: https://youtu.be/GRLNETxWUR8
 
 **Introduction:**
 
